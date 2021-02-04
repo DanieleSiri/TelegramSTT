@@ -10,10 +10,10 @@ from concurrent import futures
 MAX_WORKERS = 20
 
 
-def ffmpeg_convert(ogg_audio, audio_id):
+def ffmpeg_convert(ogg_audio):
     """
-    coroutine for converting the .ogg audios into .wav
-    :return tuple
+     converts the .ogg audios into .wav using ffmpeg from shell
+    :return str
     """
     wav = ogg_audio.replace(".oga", ".wav")
     try:
@@ -25,14 +25,14 @@ def ffmpeg_convert(ogg_audio, audio_id):
         process.wait()
     cwd = os.getcwd()
     wav = os.path.join(cwd, wav)
-    return wav, audio_id
+    return wav
 
 
 def deletes(audios):
     """
     deletes the files downloaded and converted from the filesystem
     """
-    for audio in audios.values():
+    for audio in audios:
         try:
             os.remove(audio)
         except subprocess.SubprocessError as err:
@@ -45,29 +45,16 @@ class STT:
         ogg_audios = {audio_id: path_to_ogg}
         """
         self._ogg_audios = dict(ogg_audios)
-        self._wav_audios = self.convert_to_wav()
         self._recognizer = sr.Recognizer()
         self.folder = folder
 
-    def convert_to_wav(self):
+    def get_transcription(self, audio, audio_id):
         """
-        converting the audio (downloaded from telegram) to wav
-        :return: dict
-        """
-        workers = min(len(self._ogg_audios), MAX_WORKERS)
-        with futures.ThreadPoolExecutor(workers) as pool:
-            res = pool.map(ffmpeg_convert, self._ogg_audios.values(), self._ogg_audios.keys())
-
-        wavs = {}
-        for el in res:
-            wavs[el[1]] = el[0]
-        return wavs
-
-    def get_transcription(self, wav, wav_id):
-        """
-        executes the audio transcription
+        converts the audio to wav and executes the audio transcription
         :return: tuple
         """
+        # converting to wav
+        wav = ffmpeg_convert(audio)
         # open the audio file using pydub
         sound = AudioSegment.from_wav(wav)
         # split audio sound where silence is 700 milliseconds or more and get chunks
@@ -100,7 +87,7 @@ class STT:
                     text = f"{text.capitalize()}. "
                     whole_text += text
 
-        return whole_text, wav_id
+        return whole_text, audio_id
 
     def cleanup(self):
         """
@@ -111,22 +98,21 @@ class STT:
         except shutil.Error as err:
             print("Error:", str(err))
         else:
-            deletes(self._ogg_audios)
-            deletes(self._wav_audios)
+            deletes(self._ogg_audios.values())
+            wavs = [ogg.replace(".oga", ".wav") for ogg in self._ogg_audios.values()]
+            deletes(wavs)
 
     def __call__(self, *args, **kwargs):
         """
         executes the transcriptions using a threadpool
         :return: dict
         """
-        workers = min(len(self._wav_audios), MAX_WORKERS)
+        workers = min(len(self._ogg_audios), MAX_WORKERS)
 
         with futures.ThreadPoolExecutor(workers) as pool:
-            res = pool.map(self.get_transcription, self._wav_audios.values(), self._wav_audios.keys())
+            res = pool.map(self.get_transcription, self._ogg_audios.values(), self._ogg_audios.keys())
 
-        texts = {}  # produce the result as a dict
-        for el in res:
-            texts[el[1]] = el[0]
+        texts = {el[1]: el[0] for el in res}  # produce the result as a dict unpacking the tuples in the list
         return texts
 
     def __repr__(self):
