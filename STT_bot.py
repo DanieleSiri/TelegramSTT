@@ -57,7 +57,10 @@ class STTBot:
         """
         function executed by the bot when command is sent
         """
+        import time
+        t0 = time.time()
         self.process_audios()
+        print(time.time() - t0)
 
     def bot_audio_repeat(self, context):
         """
