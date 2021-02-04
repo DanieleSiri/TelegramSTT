@@ -7,6 +7,9 @@ import shutil
 from concurrent import futures
 
 
+MAX_WORKERS = 20
+
+
 def ffmpeg_convert(ogg_audio, audio_id):
     """
     coroutine for converting the .ogg audios into .wav
@@ -46,24 +49,12 @@ class STT:
         self._recognizer = sr.Recognizer()
         self.folder = folder
 
-    def cleanup(self):
-        """
-        deletes folder and files instantiated in the class
-        """
-        try:
-            shutil.rmtree(self.folder)
-        except shutil.Error as err:
-            print("Error:", str(err))
-        else:
-            deletes(self._ogg_audios)
-            deletes(self._wav_audios)
-
     def convert_to_wav(self):
         """
         converting the audio (downloaded from telegram) to wav
         :return: dict
         """
-        workers = len(self._ogg_audios)
+        workers = min(len(self._ogg_audios), MAX_WORKERS)
         with futures.ThreadPoolExecutor(workers) as pool:
             res = pool.map(ffmpeg_convert, self._ogg_audios.values(), self._ogg_audios.keys())
 
@@ -75,6 +66,7 @@ class STT:
     def get_transcription(self, wav, wav_id):
         """
         executes the audio transcription
+        :return: tuple
         """
         # open the audio file using pydub
         sound = AudioSegment.from_wav(wav)
@@ -110,11 +102,24 @@ class STT:
 
         return whole_text, wav_id
 
+    def cleanup(self):
+        """
+        deletes folder and files instantiated in the class
+        """
+        try:
+            shutil.rmtree(self.folder)
+        except shutil.Error as err:
+            print("Error:", str(err))
+        else:
+            deletes(self._ogg_audios)
+            deletes(self._wav_audios)
+
     def __call__(self, *args, **kwargs):
         """
         executes the transcriptions using a threadpool
+        :return: dict
         """
-        workers = len(self._wav_audios)  # max number of workers is how many audios are there
+        workers = min(len(self._wav_audios), MAX_WORKERS)
 
         with futures.ThreadPoolExecutor(workers) as pool:
             res = pool.map(self.get_transcription, self._wav_audios.values(), self._wav_audios.keys())
